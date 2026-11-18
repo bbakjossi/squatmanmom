@@ -1,0 +1,1329 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>스쿼트 다중 카메라 분석기</title>
+<style>
+:root{
+  --bg:#f3f5f7;--card:#ffffff;--ink:#17212b;--mute:#5a6776;--line:#dce2e8;--soft:#eef1f4;
+  --acc:#1d4ed8;--accInk:#ffffff;--rec:#c62828;
+  --knee:#2563eb;--hip:#0f9d6e;--ankle:#7c3aed;--trunk:#d97706;
+  --L:#2563eb;--R:#ea580c;--C:#64748b;
+  --ok:#0f9d6e;--warn:#b45309;--err:#c62828;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#0e141a;--card:#161e26;--ink:#e6edf3;--mute:#93a2b3;--line:#27323d;--soft:#1d2731;
+    --acc:#6ea0ff;--accInk:#0b1220;--rec:#ff6b6b;
+    --knee:#6ea0ff;--hip:#3ddba0;--ankle:#b79cff;--trunk:#ffb547;
+    --L:#6ea0ff;--R:#ff8a4c;--C:#9fb0c3;
+    --ok:#3ddba0;--warn:#ffb547;--err:#ff6b6b;
+  }
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 "Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",system-ui,sans-serif;font-variant-numeric:tabular-nums}
+.top{max-width:1360px;margin:0 auto;padding:18px 16px 0;display:flex;gap:16px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
+h1{font-size:1.45rem;line-height:1.25;margin:0;letter-spacing:-.01em}
+.lead{margin:4px 0 0;color:var(--mute);font-size:.92rem}
+.status{display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border:1px solid var(--line);border-radius:999px;background:var(--card);font-size:.86rem;max-width:100%}
+.status::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--mute);flex:none}
+.status.ok::before{background:var(--ok)}.status.busy::before{background:var(--acc)}
+.status.warn::before{background:var(--warn)}.status.err::before{background:var(--err)}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;max-width:1360px;margin:0 auto;padding:16px}
+@media (max-width:1020px){.layout{grid-template-columns:1fr}}
+.col{display:flex;flex-direction:column;gap:16px;min-width:0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
+.card h2{font-size:1rem;margin:0 0 10px}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.spacer{flex:1}
+.btn{font:inherit;font-size:.9rem;display:inline-flex;align-items:center;justify-content:center;padding:7px 13px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:7px;cursor:pointer;min-height:36px}
+.btn:hover{background:var(--soft)}
+.btn.primary{background:var(--acc);border-color:var(--acc);color:var(--accInk)}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.sm{min-height:30px;padding:3px 10px;font-size:.82rem}
+.btn.rec.on{background:var(--rec);border-color:var(--rec);color:#fff}
+.btn:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.muted{color:var(--mute)}
+.mini{font-size:.8rem;color:var(--mute)}
+.slots{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-top:12px}
+.slot{border:1px solid var(--line);border-radius:9px;padding:10px;background:var(--soft);display:flex;flex-direction:column;gap:8px;align-items:stretch}
+.slotHead{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.chip{font-size:.78rem;padding:2px 9px}
+canvas.qr{width:168px;height:168px;align-self:center;background:#fff;border-radius:6px;image-rendering:pixelated}
+.slot .row{display:flex;gap:6px;flex-wrap:wrap}
+.warnbox{margin:10px 0 0;padding:8px 10px;border:1px solid var(--warn);border-radius:8px;color:var(--warn);font-size:.86rem}
+.urlrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.urlrow input{flex:1;min-width:220px}
+.stage{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
+.view{position:relative;background:#0b0f14;border-radius:8px;overflow:hidden;min-height:160px}
+.view canvas{display:block;width:100%;height:auto;max-height:68vh;object-fit:contain}
+#c3{background:var(--soft);touch-action:none;cursor:grab}
+.view .tag{position:absolute;left:8px;top:8px;font-size:.78rem;padding:2px 8px;border-radius:5px;background:rgba(10,16,22,.65);color:#fff}
+#view3d{background:var(--soft)}
+#view3d .tag{background:var(--card);color:var(--mute);border:1px solid var(--line)}
+.vtools{position:absolute;right:8px;bottom:8px;display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
+.emptyMsg{padding:26px 12px;text-align:center;color:var(--mute);font-size:.92rem;border:1px dashed var(--line);border-radius:8px}
+canvas#chart{width:100%;height:230px;display:block}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:.84rem;color:var(--mute);margin-top:6px}
+.legend i{display:inline-block;width:12px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.88rem}
+th,td{padding:7px 9px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th{font-weight:600;color:var(--mute)}
+th:first-child,td:first-child{text-align:left}
+td.l,th.l{text-align:left}
+.fld{margin-bottom:12px}
+.fld>label,.fld>.lab{display:block;font-size:.84rem;color:var(--mute);margin-bottom:5px}
+.seg{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.seg label{flex:1;position:relative}
+.seg input{position:absolute;opacity:0;inset:0;cursor:pointer}
+.seg span{display:block;text-align:center;padding:7px 4px;font-size:.86rem;background:var(--card)}
+.seg input:checked+span{background:var(--acc);color:var(--accInk)}
+.seg input:focus-visible+span{outline:2px solid var(--acc);outline-offset:-2px}
+select,input[type=number],input[type=text],input[type=url]{width:100%;font:inherit;font-size:.9rem;padding:7px 8px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink)}
+input[type=range]{width:100%;accent-color:var(--acc)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tile{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--card)}
+.tl{font-size:.8rem;color:var(--mute)}
+.tv{font-size:1.4rem;font-weight:650;line-height:1.2}
+.tv small{font-size:.8rem;font-weight:500;color:var(--mute);margin-left:2px}
+.row2{display:flex;gap:8px;flex-wrap:wrap}
+.row2 .btn{flex:1 1 auto}
+details{border-top:1px solid var(--line);padding-top:10px;margin-top:10px}
+details:first-of-type{border-top:0;margin-top:0;padding-top:0}
+summary{cursor:pointer;font-weight:600;font-size:.92rem}
+summary:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+details p,details li{font-size:.86rem;color:var(--mute);margin:6px 0}
+details ul,details ol{padding-left:1.2rem;margin:6px 0}
+.vh{position:fixed;left:-9999px;top:0;width:320px;height:auto;opacity:0;pointer-events:none}
+/* 폰 화면 */
+.phone{max-width:520px;margin:0 auto;padding:18px 16px 40px}
+.pview{background:#0b0f14;border-radius:10px;overflow:hidden;margin:12px 0}
+.pview video{display:block;width:100%;max-height:60vh;object-fit:contain;background:#0b0f14}
+.phone .row2{margin-top:12px}
+.tips{color:var(--mute);font-size:.88rem;padding-left:1.1rem}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+</head>
+<body>
+
+<!-- 폰 화면 (QR 링크로 열렸을 때) -->
+<main id="phone" class="phone" hidden>
+  <h1>카메라 연결</h1>
+  <p class="lead" id="pRole"></p>
+  <div class="pview"><video id="pVideo" playsinline muted autoplay></video></div>
+  <div id="pStatus" class="status" role="status" aria-live="polite">대기 중</div>
+  <div class="row2">
+    <button id="pStart" class="btn primary" type="button">카메라 시작 및 연결</button>
+    <button id="pFlip" class="btn" type="button" hidden>전면/후면 전환</button>
+    <button id="pStop" class="btn" type="button" hidden>연결 해제</button>
+  </div>
+  <ul class="tips">
+    <li>폰을 삼각대나 받침대에 세워 고정하고, 머리부터 발끝까지 화면에 담으세요.</li>
+    <li>연결되면 이 화면을 켜 둔 채로 두세요. 화면이 꺼지거나 다른 앱으로 넘어가면 전송이 끊깁니다.</li>
+    <li>분석 PC와 폰이 같은 Wi-Fi에 있으면 연결이 가장 안정적입니다.</li>
+  </ul>
+</main>
+
+<!-- 분석 PC 화면 -->
+<div id="hostApp">
+<header class="top">
+  <div>
+    <h1>스쿼트 다중 카메라 분석기</h1>
+    <p class="lead">폰 카메라를 QR로 연결해 측면과 정면(후면)을 동시에 촬영하고, 한 번의 스쿼트에서 시상면과 전두면 각도를 함께 얻습니다.</p>
+  </div>
+  <div id="status" class="status busy" role="status" aria-live="polite">준비 중</div>
+</header>
+
+<main class="layout">
+  <div class="col">
+    <section class="card" aria-label="카메라 연결">
+      <h2>카메라 연결</h2>
+      <div class="urlrow">
+        <label for="baseUrl" class="mini" style="min-width:120px">이 페이지의 인터넷 주소</label>
+        <input id="baseUrl" type="url" placeholder="https://내주소.github.io/squat-multicam-lab.html" autocomplete="off">
+      </div>
+      <p id="urlWarn" class="warnbox" hidden></p>
+      <div id="slots" class="slots"></div>
+      <p class="mini" style="margin:10px 0 0">QR을 폰 카메라로 스캔하면 브라우저가 열립니다. 폰에서 "카메라 시작 및 연결"을 누르면 영상이 이 화면으로 전송됩니다. 필요한 카메라만 연결해도 됩니다.</p>
+    </section>
+
+    <section class="card" aria-label="분석 화면">
+      <div class="toolbar">
+        <h2 style="margin:0">분석 화면</h2>
+        <span class="spacer"></span>
+        <button id="btnCal" class="btn" type="button">정자세 보정</button>
+        <button id="btnRec" class="btn rec" type="button">측정 시작</button>
+      </div>
+      <div id="noCam" class="emptyMsg">연결된 카메라가 없습니다. 위의 QR을 스캔하거나 "이 기기 카메라"를 누르세요.</div>
+      <div class="stage" id="views">
+        <div class="view" id="view3d">
+          <canvas id="c3" width="800" height="600" aria-label="3D 골격 뷰어, 드래그로 회전"></canvas>
+          <span class="tag">3D 골격 (드래그로 회전)</span>
+          <div class="vtools">
+            <button class="btn sm" type="button" id="v3f">정면</button>
+            <button class="btn sm" type="button" id="v3s">측면</button>
+            <button class="btn sm" type="button" id="v3o">사선</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" aria-label="각도 시계열">
+      <h2>관절각 시계열 (최근 12초)</h2>
+      <canvas id="chart" aria-label="무릎, 고관절, 발목, 몸통, FPPA 각도 시계열"></canvas>
+      <div class="legend">
+        <span><i style="background:var(--knee)"></i>무릎 굴곡</span>
+        <span><i style="background:var(--hip)"></i>고관절 굴곡</span>
+        <span><i style="background:var(--ankle)"></i>발목 배측굴곡</span>
+        <span><i style="background:var(--trunk)"></i>몸통 기울기</span>
+        <span><i style="background:var(--L)"></i>FPPA 왼쪽</span>
+        <span><i style="background:var(--R)"></i>FPPA 오른쪽</span>
+      </div>
+    </section>
+
+    <section class="card" aria-label="반복별 결과">
+      <h2>반복별 결과 <span class="muted" id="repCount" style="font-weight:400;font-size:.86rem"></span></h2>
+      <div class="scroll"><table id="repsT"><thead></thead><tbody id="repsBody"></tbody></table></div>
+    </section>
+
+    <section class="card" aria-label="스쿼트 종류별 비교">
+      <h2>스쿼트 종류별 비교 (평균 ± 표준편차, 괄호는 반복 수)</h2>
+      <div class="scroll"><table id="cmpT"><thead></thead><tbody id="cmpBody"></tbody></table></div>
+    </section>
+  </div>
+
+  <aside class="col">
+    <section class="card" aria-label="측정 설정">
+      <h2>측정 설정</h2>
+      <div class="fld"><span class="lab">스쿼트 종류</span>
+        <div class="seg" role="radiogroup" aria-label="스쿼트 종류">
+          <label><input type="radio" name="mode" value="bodyweight" checked><span>맨몸</span></label>
+          <label><input type="radio" name="mode" value="back"><span>백</span></label>
+          <label><input type="radio" name="mode" value="front"><span>프론트</span></label>
+        </div>
+      </div>
+      <div class="two">
+        <div class="fld"><label for="selSide">측면 분석 측</label>
+          <select id="selSide"><option value="auto">자동</option><option value="L">왼쪽</option><option value="R">오른쪽</option></select></div>
+        <div class="fld"><label for="selCalc">측면 각도 계산</label>
+          <select id="selCalc"><option value="3d">3D (월드 좌표)</option><option value="2d">2D (영상 평면)</option></select></div>
+      </div>
+      <div class="two">
+        <div class="fld"><label for="selModel">모델</label>
+          <select id="selModel"><option value="lite" selected>lite (빠름)</option><option value="full">full</option><option value="heavy">heavy (정확)</option></select></div>
+        <div class="fld"><label for="smooth">스무딩 <output id="smoothV">0.40</output></label>
+          <input id="smooth" type="range" min="0" max="0.9" step="0.05" value="0.4"></div>
+      </div>
+      <div class="two">
+        <div class="fld"><label for="thUp">반복 시작 기준 (무릎 °)</label><input id="thUp" type="number" value="25" min="10" max="60" step="1"></div>
+        <div class="fld"><label for="thDepth">반복 인정 최소 깊이 (°)</label><input id="thDepth" type="number" value="60" min="30" max="140" step="1"></div>
+      </div>
+    </section>
+
+    <section class="card" aria-label="실시간 각도">
+      <h2>실시간 각도 <span class="muted" id="repState" style="font-weight:400;font-size:.86rem"></span></h2>
+      <div class="tiles" id="tiles"></div>
+    </section>
+
+    <section class="card" aria-label="데이터">
+      <h2>데이터</h2>
+      <div class="row2">
+        <button class="btn" type="button" id="btnCsvT">시계열 CSV</button>
+        <button class="btn" type="button" id="btnCsvR">반복 요약 CSV</button>
+      </div>
+      <div class="row2" style="margin-top:8px">
+        <button class="btn" type="button" id="btnClrMode">현재 종류 기록 삭제</button>
+        <button class="btn" type="button" id="btnClrAll">전체 삭제</button>
+      </div>
+    </section>
+
+    <section class="card" aria-label="사용 방법">
+      <details open>
+        <summary>시작하기</summary>
+        <ol>
+          <li>이 파일을 인터넷에 올려 https 주소를 만듭니다(아래 "호스팅 방법").</li>
+          <li>그 주소로 PC에서 이 페이지를 열고, 위 입력칸에 같은 주소를 넣습니다.</li>
+          <li>폰으로 QR을 스캔해 연결합니다. 측면 폰은 몸의 옆면과 수직으로, 정면 폰은 정면에 둡니다.</li>
+          <li>정자세로 서서 "정자세 보정"을 누른 뒤 "측정 시작"을 누릅니다.</li>
+        </ol>
+      </details>
+      <details>
+        <summary>호스팅 방법</summary>
+        <p>폰은 https 주소에서만 카메라를 쓸 수 있어서, PC에 저장된 파일을 폰에서 열 수 없습니다. 무료 정적 호스팅에 이 HTML 파일 하나만 올리면 됩니다.</p>
+        <ul>
+          <li>GitHub Pages: 저장소를 만들고 파일을 올린 뒤 Settings의 Pages에서 배포를 켭니다.</li>
+          <li>Netlify나 Vercel: 파일(또는 폴더)을 끌어다 놓아 배포합니다.</li>
+        </ul>
+        <p>배포된 파일 주소(예: https://아이디.github.io/저장소/squat-multicam-lab.html)를 위의 주소 칸에 넣으세요.</p>
+      </details>
+      <details>
+        <summary>각도 정의</summary>
+        <ul>
+          <li>무릎 굴곡: 180도 - 엉덩이, 무릎, 발목이 이루는 각</li>
+          <li>고관절 굴곡: 180도 - 어깨, 엉덩이, 무릎이 이루는 각</li>
+          <li>발목 배측굴곡: 90도 - 무릎, 발목, 발끝이 이루는 각</li>
+          <li>몸통, 정강이 기울기: 측면 영상에서 수직선과 이루는 각 (앞쪽이 +)</li>
+          <li>FPPA: 정면(후면) 영상의 무릎 외반(+)과 내반(-) 각</li>
+          <li>FPPA와 폭비는 해당 반복 구간에서의 최대 외반, 최대 굴곡 시점의 값입니다.</li>
+        </ul>
+      </details>
+      <details>
+        <summary>한계</summary>
+        <p>각 폰의 영상은 네트워크를 거쳐 오기 때문에 카메라 간 시간 차이(수십~수백 ms)가 있습니다. 이 앱은 반복 구간 안의 최대값과 최대 굴곡 시점 값을 쓰므로 영향이 작지만, 프레임 단위 동기 분석에는 적합하지 않습니다. 카메라별 각도는 독립적으로 추정되며 3D 삼각측량은 하지 않습니다. 분석 PC의 탭은 항상 화면에 보이게 두세요. 탭이 가려지면 처리가 느려집니다.</p>
+      </details>
+    </section>
+  </aside>
+</main>
+</div>
+
+<div id="vh" class="vh" aria-hidden="true"></div>
+
+<script>
+(function () {
+"use strict";
+
+var VER = "0.10.14";
+var $ = function (id) { return document.getElementById(id); };
+var RAD = Math.PI / 180, DEG = 180 / Math.PI;
+var clamp = function (x, a, b) { return Math.min(b, Math.max(a, x)); };
+var fin = Number.isFinite;
+var f1 = function (v, d) { return fin(v) ? v.toFixed(d === undefined ? 1 : d) : "–"; };
+var LABEL = { side: "측면", front: "정면", rear: "후면" };
+
+function setEl(el, text, kind) { el.textContent = text; el.className = "status " + (kind || ""); }
+
+var qs = new URLSearchParams(location.search);
+var hostId = qs.get("host");
+
+/* =====================================================================
+   폰 쪽 (QR 링크로 열린 경우): 카메라 영상을 분석 PC로 전송
+   ===================================================================== */
+function runPhone() {
+  $("hostApp").hidden = true;
+  $("phone").hidden = false;
+  var slotKey = qs.get("slot");
+  if (!LABEL[slotKey]) slotKey = "side";
+  $("pRole").textContent = LABEL[slotKey] + " 카메라로 연결합니다. 전신이 보이도록 폰을 고정하세요.";
+  var st = { stream: null, peer: null, call: null, facing: "environment", wake: null, gen: 0 };
+  var pStatus = $("pStatus"), pVideo = $("pVideo");
+  var setP = function (t, k) { setEl(pStatus, t, k); };
+
+  function getStream(facing) {
+    return navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+      audio: false
+    });
+  }
+  function releaseWake() { if (st.wake) { try { st.wake.release(); } catch (e) {} st.wake = null; } }
+  async function keepAwake() {
+    try { if (navigator.wakeLock && navigator.wakeLock.request) st.wake = await navigator.wakeLock.request("screen"); } catch (e) { st.wake = null; }
+  }
+  function teardown() {
+    st.gen++;
+    if (st.call) { try { st.call.close(); } catch (e) {} st.call = null; }
+    if (st.peer) { try { st.peer.destroy(); } catch (e) {} st.peer = null; }
+    if (st.stream) { st.stream.getTracks().forEach(function (t) { t.stop(); }); st.stream = null; }
+    pVideo.srcObject = null;
+    releaseWake();
+  }
+  function showButtons(running) {
+    $("pStart").hidden = running; $("pFlip").hidden = !running; $("pStop").hidden = !running;
+  }
+
+  async function start() {
+    if (typeof Peer === "undefined") { setP("연결 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인하세요.", "err"); return; }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setP("이 주소에서는 카메라를 쓸 수 없습니다. https 주소로 여세요.", "err"); return;
+    }
+    teardown();
+    var gen = st.gen;
+    setP("카메라 권한을 확인하는 중", "busy");
+    try { st.stream = await getStream(st.facing); }
+    catch (e) {
+      var msg = "카메라를 시작하지 못했습니다.";
+      if (e && e.name === "NotAllowedError") msg = "카메라 권한이 거부되었습니다. 브라우저 설정에서 허용하세요.";
+      else if (e && e.name === "NotFoundError") msg = "카메라를 찾지 못했습니다.";
+      else if (e && e.name === "NotReadableError") msg = "다른 앱이 카메라를 사용 중입니다.";
+      setP(msg, "err"); return;
+    }
+    if (gen !== st.gen) { if (st.stream) st.stream.getTracks().forEach(function (t) { t.stop(); }); return; }
+    pVideo.srcObject = st.stream; pVideo.play().catch(function () {});
+    keepAwake();
+    showButtons(true);
+    setP("분석 PC에 연결하는 중", "busy");
+
+    var peer = new Peer();
+    st.peer = peer;
+    peer.on("open", function () {
+      if (gen !== st.gen) return;
+      var call = peer.call(hostId, st.stream, { metadata: { slot: slotKey } });
+      if (!call) { setP("연결을 시작하지 못했습니다. 다시 시도하세요.", "err"); return; }
+      st.call = call;
+      call.on("close", function () { if (st.call === call) { setP("연결이 종료되었습니다. 다시 시작하세요.", "warn"); showButtons(false); } });
+      call.on("error", function () { if (st.call === call) setP("연결 중 오류가 발생했습니다.", "err"); });
+      var pc = call.peerConnection;
+      if (pc) {
+        pc.addEventListener("iceconnectionstatechange", function () {
+          if (st.call !== call) return;
+          var s = pc.iceConnectionState;
+          if (s === "connected" || s === "completed") setP("연결됨 (" + LABEL[slotKey] + "): 이 화면을 켜 둔 채 폰을 고정하세요", "ok");
+          else if (s === "failed") setP("연결 실패. 같은 Wi-Fi인지 확인하고 다시 시도하세요.", "err");
+          else if (s === "disconnected") setP("연결이 불안정합니다. 잠시 기다려 보세요.", "warn");
+        });
+      }
+    });
+    peer.on("error", function (err) {
+      if (gen !== st.gen) return;
+      var t = err && err.type, m;
+      if (t === "peer-unavailable") m = "분석 PC 페이지를 찾지 못했습니다. PC에서 페이지가 열려 있는지, QR을 새로 만든 것인지 확인하세요.";
+      else if (t === "network" || t === "server-error" || t === "socket-error" || t === "socket-closed") m = "연결 서버에 접속하지 못했습니다. 인터넷 연결을 확인하세요.";
+      else m = "연결 오류: " + (err && err.message ? err.message : t);
+      setP(m, "err");
+    });
+    peer.on("disconnected", function () { if (gen === st.gen) { try { peer.reconnect(); } catch (e) {} } });
+  }
+
+  async function flip() {
+    var next = st.facing === "environment" ? "user" : "environment";
+    try {
+      var ns = await getStream(next);
+      var track = ns.getVideoTracks()[0];
+      var pc = st.call && st.call.peerConnection;
+      if (pc) {
+        var snd = pc.getSenders().find(function (s) { return s.track && s.track.kind === "video"; });
+        if (snd) await snd.replaceTrack(track);
+      }
+      if (st.stream) st.stream.getTracks().forEach(function (t) { t.stop(); });
+      st.stream = ns; st.facing = next; pVideo.srcObject = ns; pVideo.play().catch(function () {});
+    } catch (e) { setP("카메라를 전환하지 못했습니다.", "warn"); }
+  }
+
+  $("pStart").addEventListener("click", start);
+  $("pFlip").addEventListener("click", flip);
+  $("pStop").addEventListener("click", function () { teardown(); showButtons(false); setP("연결을 해제했습니다.", ""); });
+  document.addEventListener("visibilitychange", function () { if (!document.hidden && st.stream && !st.wake) keepAwake(); });
+  window.addEventListener("pagehide", teardown);
+}
+
+/* =====================================================================
+   분석 PC 쪽
+   ===================================================================== */
+function runHost() {
+
+var SIDE = {
+  L: { sh: 11, hip: 23, knee: 25, ank: 27, heel: 29, toe: 31 },
+  R: { sh: 12, hip: 24, knee: 26, ank: 28, heel: 30, toe: 32 }
+};
+var BONES = [
+  [11, 12, "C"], [23, 24, "C"],
+  [11, 13, "L"], [13, 15, "L"], [11, 23, "L"], [23, 25, "L"], [25, 27, "L"], [27, 29, "L"], [29, 31, "L"], [27, 31, "L"],
+  [12, 14, "R"], [14, 16, "R"], [12, 24, "R"], [24, 26, "R"], [26, 28, "R"], [28, 30, "R"], [30, 32, "R"], [28, 32, "R"]
+];
+var JOINTS = { L: [11, 13, 15, 23, 25, 27, 29, 31], R: [12, 14, 16, 24, 26, 28, 30, 32] };
+var MODES = { bodyweight: "맨몸 스쿼트", back: "백 스쿼트", front: "프론트 스쿼트" };
+var SLOT_DEFS = [
+  { key: "side", label: "측면", view: "sagittal" },
+  { key: "front", label: "정면", view: "frontal" },
+  { key: "rear", label: "후면", view: "frontal" }
+];
+var HAS_RVFC = typeof HTMLVideoElement !== "undefined" && "requestVideoFrameCallback" in HTMLVideoElement.prototype;
+
+var S = {
+  peer: null, peerId: "", mode: "bodyweight", sideSel: "auto", calc: "3d", smooth: 0.4, model: "lite",
+  recording: false, countdown: false, cdTimer: null,
+  reps: [], frames: [], rep: null, yaw: 0, pitch: 0.12, lastUI: 0, hostMsg: "", hostKind: "busy",
+  t0: performance.now(), raf: 0
+};
+var slots = {};
+var modP = null;
+var C = {};
+
+function refreshColors() {
+  var cs = getComputedStyle(document.documentElement);
+  ["--knee", "--hip", "--ankle", "--trunk", "--L", "--R", "--C", "--line", "--mute", "--ink", "--soft"].forEach(function (n) {
+    C[n.slice(2)] = cs.getPropertyValue(n).trim();
+  });
+}
+function nowSec() { return (performance.now() - S.t0) / 1000; }
+function setStatus(text, kind) { setEl($("status"), text, kind); }
+function setHost(text, kind) { S.hostMsg = text; S.hostKind = kind; setStatus(text, kind); }
+function connectedSlots() { return SLOT_DEFS.map(function (d) { return slots[d.key]; }).filter(function (s) { return s.stream; }); }
+
+/* ---------- 수학 유틸 ---------- */
+function sub(a, b) { return { x: a.x - b.x, y: a.y - b.y, z: (a.z || 0) - (b.z || 0) }; }
+function dot(a, b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
+function norm(a) { return Math.hypot(a.x, a.y, a.z); }
+function angleAt(a, b, c) {
+  var u = sub(a, b), v = sub(c, b), d = norm(u) * norm(v);
+  if (d < 1e-9) return NaN;
+  return Math.acos(clamp(dot(u, v) / d, -1, 1)) * DEG;
+}
+function fppa(hip, knee, ank, mid) {
+  var ang = 180 - angleAt(hip, knee, ank), dy = ank.y - hip.y;
+  if (!fin(ang) || Math.abs(dy) < 1e-6) return NaN;
+  var t = (knee.y - hip.y) / dy, lx = hip.x + t * (ank.x - hip.x);
+  var m = Math.sign(mid - hip.x) || 1;
+  return ((knee.x - lx) * m >= 0 ? 1 : -1) * ang;
+}
+function ema(prev, cur, a) {
+  if (!prev || prev.length !== cur.length) {
+    return cur.map(function (p) { return { x: p.x, y: p.y, z: p.z, visibility: p.visibility }; });
+  }
+  return cur.map(function (p, i) {
+    var q = prev[i];
+    return { x: q.x + a * (p.x - q.x), y: q.y + a * (p.y - q.y), z: q.z + a * (p.z - q.z), visibility: p.visibility };
+  });
+}
+function fmtTime(s) {
+  if (!fin(s)) return "0:00";
+  var m = Math.floor(s / 60), r = Math.floor(s - m * 60);
+  return m + ":" + (r < 10 ? "0" : "") + r;
+}
+function newRep() { return { state: "idle", t0: 0, peak: 0, tPeak: 0, snap: null, maxF: { front: -Infinity, rear: -Infinity } }; }
+function zeroOff() { return { L: { knee: 0, hip: 0, ankle: 0 }, R: { knee: 0, hip: 0, ankle: 0 }, trunk: 0, shank: 0 }; }
+function rand(n) {
+  var s = "", ch = "abcdefghijklmnopqrstuvwxyz0123456789";
+  for (var i = 0; i < n; i++) s += ch.charAt(Math.floor(Math.random() * ch.length));
+  return s;
+}
+
+/* ---------- UI 구성 ---------- */
+function makeSlot(d) {
+  var video = document.createElement("video");
+  video.muted = true; video.playsInline = true; video.autoplay = true;
+  $("vh").appendChild(video);
+  var s = {
+    key: d.key, label: d.label, view: d.view, src: null, stream: null, call: null, video: video,
+    canvas: null, ctx: null, lm: null, lmToken: 0, lmLoading: false, lmError: false,
+    fl: null, fw: null, lastTs: 0, lastProc: 0, newFrame: false, lastFrameAt: 0,
+    ang: null, angAt: 0, side: "R", off: zeroOff(), calib: null, live: [], errAt: 0
+  };
+  if (HAS_RVFC) {
+    var cb = function () { s.newFrame = true; s.lastFrameAt = performance.now(); video.requestVideoFrameCallback(cb); };
+    video.requestVideoFrameCallback(cb);
+  }
+  return s;
+}
+function buildUI() {
+  SLOT_DEFS.forEach(function (d) {
+    var card = document.createElement("div");
+    card.className = "slot"; card.id = "card_" + d.key;
+    card.innerHTML =
+      '<div class="slotHead"><strong>' + d.label + ' 카메라</strong><span class="status chip" id="chip_' + d.key + '">대기</span></div>' +
+      '<canvas class="qr" id="qr_' + d.key + '" width="168" height="168" aria-label="' + d.label + ' 카메라 연결 QR코드"></canvas>' +
+      '<div class="mini" id="hint_' + d.key + '">폰 카메라로 QR을 스캔하세요.</div>' +
+      '<div class="row">' +
+      '<button class="btn sm" type="button" data-act="copy" data-slot="' + d.key + '">링크 복사</button>' +
+      '<button class="btn sm" type="button" data-act="local" data-slot="' + d.key + '">이 기기 카메라</button>' +
+      '<button class="btn sm" type="button" data-act="drop" data-slot="' + d.key + '" id="drop_' + d.key + '" hidden>연결 해제</button>' +
+      '</div>';
+    $("slots").appendChild(card);
+
+    var view = document.createElement("div");
+    view.className = "view"; view.id = "view_" + d.key; view.hidden = true;
+    view.innerHTML = '<canvas id="cv_' + d.key + '" width="640" height="360" aria-label="' + d.label + ' 카메라 영상과 골격"></canvas>' +
+      '<span class="tag">' + d.label + ' 카메라</span>';
+    $("views").insertBefore(view, $("view3d"));
+
+    var s = slots[d.key];
+    s.canvas = $("cv_" + d.key); s.ctx = s.canvas.getContext("2d");
+  });
+}
+function updateCard(slot) {
+  var k = slot.key, connected = !!slot.stream;
+  var text = "대기", kind = "";
+  if (connected) {
+    text = slot.src === "local" ? "이 기기" : "폰 연결됨"; kind = "ok";
+    if (slot.lmLoading) { text += " · 모델 로딩"; kind = "busy"; }
+    else if (slot.lmError) { text += " · 모델 오류"; kind = "err"; }
+    else if (HAS_RVFC && slot.src === "remote" && performance.now() - slot.lastFrameAt > 3000) { text = "수신 끊김"; kind = "warn"; }
+  }
+  setEl($("chip_" + k), text, kind);
+  $("chip_" + k).classList.add("chip");
+  $("qr_" + k).hidden = connected;
+  $("drop_" + k).hidden = !connected;
+  $("hint_" + k).textContent = connected
+    ? (slot.src === "local" ? "이 기기의 카메라를 사용 중입니다." : "폰 영상이 전송되고 있습니다.")
+    : "폰 카메라로 QR을 스캔하세요.";
+  $("view_" + k).hidden = !connected;
+  $("noCam").hidden = connectedSlots().length > 0;
+  updateTileVisibility();
+}
+
+/* ---------- QR ---------- */
+function baseUrl() { return $("baseUrl").value.trim().split("#")[0].split("?")[0]; }
+function linkFor(key) { return baseUrl() + "?host=" + encodeURIComponent(S.peerId) + "&slot=" + key; }
+function drawQR(canvas, text) {
+  var g = canvas.getContext("2d");
+  try {
+    var qr = qrcode(0, "M"); qr.addData(text); qr.make();
+    var n = qr.getModuleCount(), quiet = 4, total = n + quiet * 2;
+    var cell = Math.max(2, Math.ceil(168 * (window.devicePixelRatio || 1) / total));
+    canvas.width = total * cell; canvas.height = total * cell;
+    g.fillStyle = "#fff"; g.fillRect(0, 0, canvas.width, canvas.height);
+    g.fillStyle = "#000";
+    for (var r = 0; r < n; r++) for (var c = 0; c < n; c++) if (qr.isDark(r, c)) g.fillRect((c + quiet) * cell, (r + quiet) * cell, cell, cell);
+    return true;
+  } catch (e) {
+    g.fillStyle = "#fff"; g.fillRect(0, 0, canvas.width, canvas.height);
+    return false;
+  }
+}
+function renderQR() {
+  var base = baseUrl(), isHttp = /^https?:\/\//i.test(base), warn = $("urlWarn");
+  if (!isHttp) {
+    warn.hidden = false;
+    warn.textContent = location.protocol === "file:"
+      ? "이 파일은 PC에서 직접 열려 있어 폰이 접속할 수 없습니다. 파일을 인터넷에 올린 https 주소를 위 칸에 입력하세요. (아래 '호스팅 방법' 참고)"
+      : "https로 시작하는 주소를 입력하세요.";
+  } else if (/^http:\/\//i.test(base) && !/^http:\/\/(localhost|127\.0\.0\.1)/i.test(base)) {
+    warn.hidden = false;
+    warn.textContent = "http 주소에서는 폰 브라우저가 카메라를 허용하지 않습니다. https 주소를 사용하세요.";
+  } else { warn.hidden = true; }
+  var ready = isHttp && S.peerId;
+  var libOk = typeof qrcode !== "undefined";
+  SLOT_DEFS.forEach(function (d) {
+    var s = slots[d.key], c = $("qr_" + d.key);
+    if (s.stream) return;
+    var hint = $("hint_" + d.key);
+    if (!ready) {
+      var g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+      hint.textContent = S.peerId ? "주소를 입력하면 QR이 만들어집니다." : "연결 서버 준비 중입니다.";
+    } else if (!libOk || !drawQR(c, linkFor(d.key))) {
+      hint.textContent = "QR을 만들지 못했습니다. '링크 복사'를 쓰세요.";
+    } else { hint.textContent = "폰 카메라로 QR을 스캔하세요."; }
+  });
+  try { localStorage.setItem("sqlab_base", base); } catch (e) {}
+}
+function copyLink(key) {
+  if (!S.peerId || !/^https?:\/\//i.test(baseUrl())) { setStatus("먼저 이 페이지의 https 주소를 입력하세요.", "warn"); return; }
+  var url = linkFor(key);
+  var done = function () { setStatus(LABEL[key] + " 연결 링크를 복사했습니다.", "ok"); };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(done, function () { window.prompt("링크를 복사하세요", url); });
+  else window.prompt("링크를 복사하세요", url);
+}
+
+/* ---------- 연결 (PeerJS) ---------- */
+function startPeer() {
+  if (typeof Peer === "undefined") { setHost("연결 라이브러리(PeerJS)를 불러오지 못했습니다. 인터넷 연결을 확인하고 새로고침하세요. 이 기기 카메라는 그대로 쓸 수 있습니다.", "err"); return; }
+  var peer;
+  try { peer = new Peer("sqlab-" + rand(8)); } catch (e) { setHost("연결을 만들지 못했습니다.", "err"); return; }
+  S.peer = peer;
+  peer.on("open", function (id) { S.peerId = id; setHost("연결 서버 준비 완료. 폰으로 QR을 스캔하세요.", "ok"); renderQR(); });
+  peer.on("call", onCall);
+  peer.on("disconnected", function () { setHost("연결 서버와 끊어졌습니다. 다시 연결하는 중", "warn"); try { peer.reconnect(); } catch (e) {} });
+  peer.on("error", function (err) {
+    var t = err && err.type;
+    if (t === "unavailable-id") { try { peer.destroy(); } catch (e) {} startPeer(); return; }
+    if (t === "network" || t === "server-error" || t === "socket-error" || t === "socket-closed") setHost("연결 서버에 접속하지 못했습니다. 인터넷 연결을 확인하세요.", "err");
+    else if (t === "browser-incompatible") setHost("이 브라우저는 폰 연결을 지원하지 않습니다. Chrome을 사용하세요.", "err");
+    else setHost("연결 오류: " + (err && err.message ? err.message : t), "err");
+  });
+}
+function onCall(call) {
+  var key = call.metadata && call.metadata.slot, slot = slots[key];
+  if (!slot) { try { call.close(); } catch (e) {} return; }
+  call.answer();
+  call.on("stream", function (rs) {
+    if (slot.call === call && slot.stream === rs) return;
+    attach(slot, rs, "remote", call);
+  });
+  call.on("close", function () { if (slot.call === call) { detach(slot); setStatus(slot.label + " 카메라 연결이 끊어졌습니다.", "warn"); } });
+  call.on("error", function () { if (slot.call === call) detach(slot); });
+}
+
+/* ---------- 소스 연결/해제 ---------- */
+function attach(slot, stream, src, call) {
+  detach(slot);
+  slot.stream = stream; slot.src = src; slot.call = call || null;
+  slot.video.srcObject = stream;
+  slot.video.play().catch(function () {});
+  slot.fl = null; slot.fw = null; slot.live = []; slot.ang = null; slot.newFrame = false; slot.lastFrameAt = performance.now();
+  slot.off = zeroOff(); slot.calib = null;
+  ensureLandmarker(slot);
+  updateCard(slot);
+  setStatus(slot.label + " 카메라 연결됨", "ok");
+}
+function detach(slot) {
+  slot.lmToken++;
+  var c = slot.call; slot.call = null;
+  if (c) { try { c.close(); } catch (e) {} }
+  if (slot.stream && slot.src === "local") slot.stream.getTracks().forEach(function (t) { t.stop(); });
+  slot.stream = null; slot.src = null;
+  try { slot.video.pause(); } catch (e) {}
+  slot.video.srcObject = null;
+  if (slot.lm) { try { slot.lm.close(); } catch (e) {} slot.lm = null; }
+  slot.lmLoading = false; slot.lmError = false;
+  slot.fl = null; slot.fw = null; slot.ang = null; slot.calib = null;
+  if (slot.ctx) slot.ctx.clearRect(0, 0, slot.canvas.width, slot.canvas.height);
+  if (!connectedSlots().length && S.recording) stopRec();
+  updateCard(slot);
+  renderQR();
+  draw3D();
+}
+async function useLocal(slot) {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    setStatus("이 브라우저나 주소에서는 카메라를 쓸 수 없습니다. Chrome에서 https 주소로 여세요.", "err"); return;
+  }
+  try {
+    var stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+    attach(slot, stream, "local", null);
+    stream.getVideoTracks().forEach(function (t) {
+      t.addEventListener("ended", function () { if (slot.stream === stream) { detach(slot); setStatus("카메라 연결이 끊어졌습니다.", "err"); } });
+    });
+  } catch (e) {
+    var msg = "카메라를 시작하지 못했습니다.";
+    if (e && e.name === "NotAllowedError") msg = "카메라 권한이 거부되었습니다. 주소창에서 권한을 허용하세요.";
+    else if (e && e.name === "NotFoundError") msg = "연결된 카메라를 찾지 못했습니다.";
+    else if (e && e.name === "NotReadableError") msg = "다른 프로그램이 카메라를 사용 중입니다.";
+    setStatus(msg, "err");
+  }
+}
+
+/* ---------- MediaPipe ---------- */
+function getModule() {
+  if (!modP) {
+    modP = (async function () {
+      var m = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@" + VER + "/vision_bundle.mjs");
+      var fs = await m.FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@" + VER + "/wasm");
+      return { m: m, fs: fs };
+    })();
+    modP.catch(function () { modP = null; });
+  }
+  return modP;
+}
+async function ensureLandmarker(slot) {
+  var token = ++slot.lmToken;
+  slot.lmLoading = true; slot.lmError = false; updateCard(slot);
+  try {
+    var mm = await getModule();
+    var name = S.model;
+    var url = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_" + name + "/float16/1/pose_landmarker_" + name + ".task";
+    var make = function (delegate) {
+      return mm.m.PoseLandmarker.createFromOptions(mm.fs, {
+        baseOptions: { modelAssetPath: url, delegate: delegate },
+        runningMode: "VIDEO", numPoses: 1,
+        minPoseDetectionConfidence: 0.5, minPosePresenceConfidence: 0.5, minTrackingConfidence: 0.5
+      });
+    };
+    var lm;
+    try { lm = await make("GPU"); } catch (e1) { lm = await make("CPU"); }
+    if (token !== slot.lmToken) { try { lm.close(); } catch (e2) {} return; }
+    var old = slot.lm;
+    slot.lm = lm; slot.lastTs = 0; slot.lmLoading = false;
+    if (old) { try { old.close(); } catch (e3) {} }
+    updateCard(slot);
+  } catch (err) {
+    if (token !== slot.lmToken) return;
+    slot.lm = null; slot.lmLoading = false; slot.lmError = true;
+    updateCard(slot);
+    setStatus("모델을 불러오지 못했습니다. 인터넷 연결을 확인하고 새로고침하세요.", "err");
+    if (window.console) console.error(err);
+  }
+}
+
+/* ---------- 메인 루프 ---------- */
+function loop(now) {
+  S.raf = requestAnimationFrame(loop);
+  for (var i = 0; i < SLOT_DEFS.length; i++) {
+    var slot = slots[SLOT_DEFS[i].key];
+    if (!slot.stream || !slot.lm) continue;
+    var v = slot.video;
+    if (v.readyState < 2 || !v.videoWidth) continue;
+    if (HAS_RVFC) { if (!slot.newFrame) continue; slot.newFrame = false; }
+    else { if (now - slot.lastProc < 30) continue; slot.lastProc = now; }
+    try { processSlot(slot, now); }
+    catch (e) {
+      if (now - slot.errAt > 3000) { slot.errAt = now; setStatus(slot.label + " 처리 오류: " + (e && e.message ? e.message : e), "err"); }
+      if (window.console) console.error(e);
+    }
+  }
+  if (now - S.lastUI > 100) {
+    S.lastUI = now;
+    updateLive(now); drawChart();
+    SLOT_DEFS.forEach(function (d) { var s = slots[d.key]; if (s.stream) updateCard(s); });
+  }
+}
+
+function processSlot(slot, now) {
+  var v = slot.video, W = v.videoWidth, H = v.videoHeight, ctx = slot.ctx, cv = slot.canvas;
+  if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+  var ts = Math.round(now);
+  if (ts <= slot.lastTs) ts = slot.lastTs + 1;
+  slot.lastTs = ts;
+  var res = slot.lm.detectForVideo(v, ts);
+  ctx.drawImage(v, 0, 0, W, H);
+  var t = nowSec();
+
+  if (!res || !res.landmarks || !res.landmarks.length) {
+    slot.fl = null; slot.fw = null; slot.ang = null;
+    var bh = Math.max(34, Math.min(W, H) * 0.07);
+    ctx.fillStyle = "rgba(10,16,22,.6)"; ctx.fillRect(0, 0, W, bh);
+    ctx.fillStyle = "#fff"; ctx.font = Math.round(bh * 0.45) + "px system-ui,sans-serif"; ctx.textBaseline = "middle"; ctx.textAlign = "left";
+    ctx.fillText("자세가 검출되지 않았습니다. 전신이 보이는지 확인하세요.", 12, bh / 2);
+    draw3D();
+    return;
+  }
+  var a = 1 - S.smooth;
+  slot.fl = ema(slot.fl, res.landmarks[0], a);
+  slot.fw = (res.worldLandmarks && res.worldLandmarks[0]) ? ema(slot.fw, res.worldLandmarks[0], a) : null;
+
+  var ang = analyze(slot, W, H);
+  slot.ang = ang; slot.angAt = now;
+  drawPose(slot, W, H, ang);
+
+  slot.live.push({ t: t, knee: ang.knee, hip: ang.hip, ankle: ang.ankle, trunk: ang.trunk, fppaL: ang.fppaL, fppaR: ang.fppaR });
+  if (slot.live.length > 1500) slot.live.splice(0, slot.live.length - 1200);
+
+  if (slot.calib) collectCalib(slot, ang);
+
+  if (S.recording && !S.countdown) {
+    if (S.frames.length < 120000) {
+      S.frames.push({ t: t, slot: slot.key, mode: S.mode, knee: ang.knee, hip: ang.hip, ankle: ang.ankle, trunk: ang.trunk,
+        shank: ang.shank, thigh: ang.thigh, fppaL: ang.fppaL, fppaR: ang.fppaR, ratio: ang.ratio });
+    }
+    if (slot.view === "frontal") trackFppa(slot, ang);
+    if (driverSlot(now) === slot) updateRep(t, ang, now);
+  }
+  draw3D();
+}
+
+/* ---------- 각도 계산 ---------- */
+function analyze(slot, W, H) {
+  var fl = slot.fl, fw = slot.fw;
+  var use3 = (S.calc === "3d" || slot.view === "frontal") && fw;
+  var P2 = fl.map(function (p) { return { x: p.x * W, y: p.y * H, z: 0 }; });
+  var P = use3 ? fw.map(function (p) { return { x: p.x, y: p.y, z: p.z }; }) : P2;
+
+  var visOf = function (s) {
+    var d = SIDE[s], vv = function (i) { return fin(fl[i].visibility) ? fl[i].visibility : 1; };
+    return (vv(d.sh) + vv(d.hip) + vv(d.knee) + vv(d.ank) + vv(d.toe)) / 5;
+  };
+  if (S.sideSel === "auto") {
+    var vl = visOf("L"), vr = visOf("R");
+    if (slot.side === "L" && vr > vl + 0.12) slot.side = "R";
+    else if (slot.side === "R" && vl > vr + 0.12) slot.side = "L";
+  } else { slot.side = S.sideSel; }
+
+  var rawJ = function (s) {
+    var d = SIDE[s];
+    return {
+      knee: 180 - angleAt(P[d.hip], P[d.knee], P[d.ank]),
+      hip: 180 - angleAt(P[d.sh], P[d.hip], P[d.knee]),
+      ankle: 90 - angleAt(P[d.knee], P[d.ank], P[d.toe])
+    };
+  };
+  var raw = { L: rawJ("L"), R: rawJ("R") };
+  var o = slot.off[slot.side], d = SIDE[slot.side];
+  var J = { knee: raw[slot.side].knee - o.knee, hip: raw[slot.side].hip - o.hip, ankle: raw[slot.side].ankle - o.ankle };
+  var facing = Math.sign(P2[d.toe].x - P2[d.heel].x) || 1;
+  var trunkRaw = Math.atan2((P2[d.sh].x - P2[d.hip].x) * facing, -(P2[d.sh].y - P2[d.hip].y)) * DEG;
+  var shankRaw = Math.atan2((P2[d.knee].x - P2[d.ank].x) * facing, -(P2[d.knee].y - P2[d.ank].y)) * DEG;
+  var tl = Math.hypot(P2[d.knee].x - P2[d.hip].x, P2[d.knee].y - P2[d.hip].y);
+  var thigh = tl > 1e-6 ? Math.asin(clamp((P2[d.hip].y - P2[d.knee].y) / tl, -1, 1)) * DEG : NaN;
+
+  var mid = (P2[23].x + P2[24].x) / 2;
+  var fL = fppa(P2[23], P2[25], P2[27], mid), fR = fppa(P2[24], P2[26], P2[28], mid);
+  var aw = Math.abs(P2[27].x - P2[28].x);
+  var ratio = aw > 1e-6 ? Math.abs(P2[25].x - P2[26].x) / aw : NaN;
+
+  var knee = J.knee;
+  if (slot.view === "frontal" && !fw) knee = NaN;
+  return {
+    side: slot.side, facing: facing, knee: knee, hip: J.hip, ankle: J.ankle,
+    trunk: trunkRaw - slot.off.trunk, shank: shankRaw - slot.off.shank, thigh: thigh,
+    fppaL: fL, fppaR: fR, ratio: ratio,
+    raw: { L: raw.L, R: raw.R, trunk: trunkRaw, shank: shankRaw }
+  };
+}
+
+/* ---------- 영점 보정 ---------- */
+function startCalib() {
+  var cs = connectedSlots();
+  if (!cs.length) { setStatus("먼저 카메라를 연결하세요.", "warn"); return; }
+  cs.forEach(function (s) { s.calib = { t0: null, n: 0, s: { Lk: 0, Lh: 0, La: 0, Rk: 0, Rh: 0, Ra: 0, tr: 0, sh: 0 } }; });
+  setStatus("정자세로 가만히 서 주세요 (약 1.5초)", "busy");
+}
+function collectCalib(slot, a) {
+  var c = slot.calib, r = a.raw, t = nowSec();
+  var vals = [r.L.knee, r.L.hip, r.L.ankle, r.R.knee, r.R.hip, r.R.ankle, r.trunk, r.shank];
+  if (!vals.every(fin)) return;
+  if (c.t0 === null) c.t0 = t;
+  c.n++;
+  c.s.Lk += vals[0]; c.s.Lh += vals[1]; c.s.La += vals[2];
+  c.s.Rk += vals[3]; c.s.Rh += vals[4]; c.s.Ra += vals[5];
+  c.s.tr += vals[6]; c.s.sh += vals[7];
+  if (t - c.t0 >= 1.5 && c.n >= 5) {
+    var n = c.n;
+    slot.off = {
+      L: { knee: c.s.Lk / n, hip: c.s.Lh / n, ankle: c.s.La / n },
+      R: { knee: c.s.Rk / n, hip: c.s.Rh / n, ankle: c.s.Ra / n },
+      trunk: c.s.tr / n, shank: c.s.sh / n
+    };
+    slot.calib = null; slot.live = [];
+    if (!connectedSlots().some(function (s) { return s.calib; })) setStatus("정자세 보정 완료 (서 있을 때 0도 기준)", "ok");
+  }
+}
+function resetOffsets() {
+  SLOT_DEFS.forEach(function (d) { var s = slots[d.key]; s.off = zeroOff(); s.calib = null; s.live = []; });
+}
+
+/* ---------- 반복 검출 ---------- */
+function freshAng(slot, now) { return slot && slot.stream && slot.ang && now - slot.angAt < 700 ? slot.ang : null; }
+function driverSlot(now) {
+  for (var i = 0; i < SLOT_DEFS.length; i++) {
+    var s = slots[SLOT_DEFS[i].key];
+    if (freshAng(s, now) && fin(s.ang.knee)) return s;
+  }
+  return null;
+}
+function snapAll(now) {
+  var o = { hip: NaN, ankle: NaN, trunk: NaN, shank: NaN, thigh: NaN, ratioFront: NaN };
+  for (var i = 0; i < SLOT_DEFS.length; i++) {
+    var s = slots[SLOT_DEFS[i].key];
+    if (s.view !== "sagittal") continue;
+    var a = freshAng(s, now);
+    if (a) { o.hip = a.hip; o.ankle = a.ankle; o.trunk = a.trunk; o.shank = a.shank; o.thigh = a.thigh; break; }
+  }
+  var f = freshAng(slots.front, now);
+  if (f) o.ratioFront = f.ratio;
+  return o;
+}
+function trackFppa(slot, a) {
+  var R = S.rep;
+  if (R.state !== "active") return;
+  var m = Math.max(fin(a.fppaL) ? a.fppaL : -Infinity, fin(a.fppaR) ? a.fppaR : -Infinity);
+  if (m > R.maxF[slot.key]) R.maxF[slot.key] = m;
+}
+function updateRep(t, a, now) {
+  var R = S.rep, k = a.knee;
+  if (!fin(k)) return;
+  var up = +$("thUp").value || 25, minD = +$("thDepth").value || 60;
+  if (R.state === "idle") {
+    if (k > up) { R.state = "active"; R.t0 = t; R.peak = k; R.tPeak = t; R.snap = snapAll(now); R.maxF = { front: -Infinity, rear: -Infinity }; }
+  } else {
+    if (k > R.peak) { R.peak = k; R.tPeak = t; R.snap = snapAll(now); }
+    if (k < up - 5) {
+      if (R.peak >= minD) finishRep(t);
+      S.rep = newRep();
+    }
+  }
+}
+function finishRep(tEnd) {
+  var R = S.rep, sn = R.snap;
+  if (!sn) return;
+  var n = S.reps.filter(function (r) { return r.mode === S.mode; }).length + 1;
+  S.reps.push({
+    mode: S.mode, n: n, t: R.tPeak, peakKnee: R.peak,
+    hip: sn.hip, ankle: sn.ankle, trunk: sn.trunk, shank: sn.shank, thigh: sn.thigh,
+    tDown: R.tPeak - R.t0, tUp: tEnd - R.tPeak,
+    fppaFront: fin(R.maxF.front) ? R.maxF.front : NaN, ratioFront: sn.ratioFront,
+    fppaRear: fin(R.maxF.rear) ? R.maxF.rear : NaN
+  });
+  renderReps();
+}
+
+/* ---------- 측정 제어 ---------- */
+function startRec() {
+  S.recording = true; S.countdown = false; S.rep = newRep();
+  setStatus("측정 중: " + MODES[S.mode], "ok");
+  syncButtons();
+}
+function stopRec() {
+  S.recording = false; S.countdown = false; clearTimeout(S.cdTimer); S.rep = newRep();
+  setStatus("측정 종료 (반복 " + S.reps.length + "회 기록)", "");
+  syncButtons();
+}
+function toggleRec() {
+  if (S.countdown) { S.countdown = false; clearTimeout(S.cdTimer); setStatus("측정 시작을 취소했습니다.", ""); syncButtons(); return; }
+  if (S.recording) { stopRec(); return; }
+  if (!connectedSlots().length) { setStatus("먼저 카메라를 연결하세요.", "warn"); return; }
+  var n = 3; S.countdown = true; syncButtons();
+  var tick = function () {
+    if (!S.countdown) return;
+    if (n > 0) { setStatus("측정 시작까지 " + n, "busy"); n--; S.cdTimer = setTimeout(tick, 1000); }
+    else { S.countdown = false; startRec(); }
+  };
+  tick();
+}
+function syncButtons() {
+  var rec = $("btnRec");
+  rec.textContent = S.countdown ? "취소" : (S.recording ? "측정 종료" : "측정 시작");
+  rec.classList.toggle("on", S.recording);
+}
+
+/* ---------- 2D 오버레이 ---------- */
+function arc(ctx, b, a, c, r, color) {
+  var t1 = Math.atan2(a.y - b.y, a.x - b.x), t2 = Math.atan2(c.y - b.y, c.x - b.x), d = t2 - t1;
+  while (d > Math.PI) d -= 2 * Math.PI;
+  while (d < -Math.PI) d += 2 * Math.PI;
+  ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.arc(b.x, b.y, r, t1, t1 + d, d < 0); ctx.closePath();
+  ctx.fillStyle = color + "55"; ctx.fill();
+  ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke();
+}
+function tag(ctx, text, x, y, fs, color, right) {
+  ctx.font = "600 " + fs + "px system-ui,sans-serif";
+  var w = ctx.measureText(text).width + 14, h = fs + 8, x0 = right ? x - w : x;
+  ctx.fillStyle = "rgba(10,16,22,.75)"; ctx.fillRect(x0, y - h / 2, w, h);
+  ctx.fillStyle = color; ctx.fillRect(x0, y - h / 2, 3, h);
+  ctx.fillStyle = "#fff"; ctx.textBaseline = "middle"; ctx.textAlign = "left";
+  ctx.fillText(text, x0 + 8, y);
+}
+function drawPose(slot, W, H, a) {
+  var ctx = slot.ctx, fl = slot.fl; if (!fl) return;
+  var vis = function (i) { return (fin(fl[i].visibility) ? fl[i].visibility : 1) > 0.3; };
+  var P = function (i) { return { x: fl[i].x * W, y: fl[i].y * H }; };
+  var u = Math.max(0.6, Math.min(W, H) / 720), lw = Math.max(2, 3 * u), jr = Math.max(3, 4.5 * u), fs = Math.max(12, 15 * u);
+  var col = { L: C.L, R: C.R, C: C.C };
+  ctx.lineCap = "round";
+  BONES.forEach(function (b) {
+    if (!vis(b[0]) || !vis(b[1])) return;
+    var p = P(b[0]), q = P(b[1]), main = slot.view === "sagittal" && b[2] === slot.side;
+    ctx.globalAlpha = (main || b[2] === "C" || slot.view === "frontal") ? 1 : 0.7;
+    ctx.strokeStyle = col[b[2]]; ctx.lineWidth = main ? lw * 1.7 : lw;
+    ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke();
+  });
+  ctx.globalAlpha = 1;
+  if (vis(11) && vis(12) && vis(0)) {
+    var ms = { x: (P(11).x + P(12).x) / 2, y: (P(11).y + P(12).y) / 2 }, nose = P(0);
+    ctx.strokeStyle = col.C; ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(ms.x, ms.y); ctx.lineTo(nose.x, nose.y); ctx.stroke();
+  }
+  if (vis(7) && vis(8)) {
+    var e1 = P(7), e2 = P(8), r = Math.hypot(e1.x - e2.x, e1.y - e2.y) * 0.6;
+    ctx.strokeStyle = col.C; ctx.lineWidth = lw; ctx.beginPath();
+    ctx.arc((e1.x + e2.x) / 2, (e1.y + e2.y) / 2, Math.max(r, 6), 0, 2 * Math.PI); ctx.stroke();
+  }
+  ["L", "R"].forEach(function (s) {
+    JOINTS[s].forEach(function (i) {
+      if (!vis(i)) return;
+      var p = P(i);
+      ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(p.x, p.y, jr + 1.5, 0, 2 * Math.PI); ctx.fill();
+      ctx.fillStyle = col[s]; ctx.beginPath(); ctx.arc(p.x, p.y, jr, 0, 2 * Math.PI); ctx.fill();
+    });
+  });
+
+  if (slot.view === "sagittal") {
+    var d = SIDE[slot.side];
+    if (![d.sh, d.hip, d.knee, d.ank, d.toe].every(vis)) return;
+    var sh = P(d.sh), hp = P(d.hip), kn = P(d.knee), an = P(d.ank), to = P(d.toe);
+    ctx.setLineDash([6, 6]); ctx.strokeStyle = "rgba(255,255,255,.55)"; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(kn.x - 90 * u, kn.y); ctx.lineTo(kn.x + 90 * u, kn.y); ctx.stroke();
+    ctx.setLineDash([]);
+    arc(ctx, kn, hp, an, 34 * u, C.knee);
+    arc(ctx, hp, sh, kn, 34 * u, C.hip);
+    arc(ctx, an, kn, to, 30 * u, C.ankle);
+    var right = function (p) { return p.x > W * 0.6; };
+    tag(ctx, "무릎 " + f1(a.knee, 0) + "°", right(kn) ? kn.x - 46 * u : kn.x + 46 * u, kn.y, fs, C.knee, right(kn));
+    tag(ctx, "고관절 " + f1(a.hip, 0) + "°", right(hp) ? hp.x - 46 * u : hp.x + 46 * u, hp.y - 4 * u, fs, C.hip, right(hp));
+    tag(ctx, "발목 " + f1(a.ankle, 0) + "°", right(an) ? an.x - 46 * u : an.x + 46 * u, an.y - 10 * u, fs, C.ankle, right(an));
+  } else {
+    [[23, 25, 27, a.fppaL], [24, 26, 28, a.fppaR]].forEach(function (g) {
+      if (!vis(g[0]) || !vis(g[1]) || !vis(g[2])) return;
+      var hp = P(g[0]), kn = P(g[1]), an = P(g[2]);
+      ctx.setLineDash([6, 6]); ctx.strokeStyle = "rgba(255,255,255,.6)"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(hp.x, hp.y); ctx.lineTo(an.x, an.y); ctx.stroke(); ctx.setLineDash([]);
+      var right = kn.x > W * 0.5;
+      tag(ctx, "FPPA " + f1(g[3], 0) + "°", right ? kn.x + 22 * u : kn.x - 22 * u, kn.y, fs, C.knee, !right);
+    });
+  }
+}
+
+/* ---------- 3D 골격 ---------- */
+function primarySlot() {
+  var best = null;
+  SLOT_DEFS.forEach(function (d) {
+    var s = slots[d.key];
+    if (!best && s.stream && s.fw) best = s;
+  });
+  return best;
+}
+function draw3D() {
+  var c = $("c3"), g = c.getContext("2d"), W = c.width, H = c.height;
+  g.clearRect(0, 0, W, H);
+  var slot = primarySlot();
+  if (!slot) {
+    g.fillStyle = C.mute; g.font = "18px system-ui,sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+    g.fillText("카메라를 연결하면 3D 골격이 표시됩니다", W / 2, H / 2);
+    return;
+  }
+  var w = slot.fw;
+  var up = ((w[11].y + w[12].y) / 2 < (w[23].y + w[24].y) / 2) ? -1 : 1;
+  var pts = w.map(function (p) { return [p.x, up * p.y, p.z]; });
+  var cy = Math.cos(S.yaw), sy = Math.sin(S.yaw), cp = Math.cos(S.pitch), sp = Math.sin(S.pitch);
+  var sc = H / 2.1, ox = W / 2, oy = H * 0.46;
+  var scr = function (q) {
+    var X = q[0] * cy + q[2] * sy, Z = -q[0] * sy + q[2] * cy;
+    var Y = q[1] * cp - Z * sp;
+    return [ox + X * sc, oy - Y * sc];
+  };
+  var floor = Math.min(pts[29][1], pts[30][1], pts[31][1], pts[32][1]) - 0.01;
+  g.strokeStyle = C.line; g.lineWidth = 1;
+  for (var i = -4; i <= 4; i++) {
+    var v = i * 0.2, a1 = scr([v, floor, -0.8]), a2 = scr([v, floor, 0.8]), b1 = scr([-0.8, floor, v]), b2 = scr([0.8, floor, v]);
+    g.beginPath(); g.moveTo(a1[0], a1[1]); g.lineTo(a2[0], a2[1]); g.stroke();
+    g.beginPath(); g.moveTo(b1[0], b1[1]); g.lineTo(b2[0], b2[1]); g.stroke();
+  }
+  var col = { L: C.L, R: C.R, C: C.C };
+  g.lineCap = "round";
+  BONES.forEach(function (b) {
+    var p = scr(pts[b[0]]), q = scr(pts[b[1]]), main = slot.view === "sagittal" && b[2] === slot.side;
+    g.strokeStyle = col[b[2]]; g.lineWidth = main ? 7 : 5;
+    g.beginPath(); g.moveTo(p[0], p[1]); g.lineTo(q[0], q[1]); g.stroke();
+  });
+  ["L", "R"].forEach(function (s) {
+    JOINTS[s].forEach(function (i) {
+      var p = scr(pts[i]);
+      g.fillStyle = col[s]; g.beginPath(); g.arc(p[0], p[1], 6, 0, 2 * Math.PI); g.fill();
+    });
+  });
+  var e1 = pts[7], e2 = pts[8];
+  var hc = scr([(e1[0] + e2[0]) / 2, (e1[1] + e2[1]) / 2, (e1[2] + e2[2]) / 2]);
+  var hr = Math.hypot(e1[0] - e2[0], e1[1] - e2[1], e1[2] - e2[2]) * 0.62 * sc;
+  g.strokeStyle = C.C; g.lineWidth = 3; g.beginPath(); g.arc(hc[0], hc[1], Math.max(hr, 8), 0, 2 * Math.PI); g.stroke();
+}
+
+/* ---------- 시계열 차트 ---------- */
+function firstLive(view) {
+  for (var i = 0; i < SLOT_DEFS.length; i++) {
+    var s = slots[SLOT_DEFS[i].key];
+    if (s.stream && s.view === view && s.live.length) return s;
+  }
+  return null;
+}
+function drawChart() {
+  var c = $("chart"), dpr = window.devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight;
+  if (!w || !h) return;
+  if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+  var g = c.getContext("2d");
+  g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+  var ml = 38, mr = 10, mt = 8, mb = 22, pw = w - ml - mr, ph = h - mt - mb;
+  var y0 = -30, y1 = 140;
+  var Y = function (v) { return mt + ph * (1 - (v - y0) / (y1 - y0)); };
+  g.font = "11px system-ui,sans-serif"; g.textAlign = "right"; g.textBaseline = "middle";
+  for (var v = -20; v <= 140; v += 20) {
+    g.strokeStyle = v === 0 ? C.mute : C.line; g.lineWidth = 1; g.beginPath(); g.moveTo(ml, Y(v)); g.lineTo(w - mr, Y(v)); g.stroke();
+    g.fillStyle = C.mute; g.fillText(String(v), ml - 6, Y(v));
+  }
+  var sag = firstLive("sagittal"), fro = firstLive("frontal");
+  if (!sag && !fro) {
+    g.fillStyle = C.mute; g.textAlign = "center"; g.fillText("데이터 대기 중", ml + pw / 2, mt + ph / 2);
+    return;
+  }
+  var tEnd = Math.max(sag ? sag.live[sag.live.length - 1].t : 0, fro ? fro.live[fro.live.length - 1].t : 0);
+  var win = 12, tStart = tEnd - win;
+  var X = function (t) { return ml + pw * ((t - tStart) / win); };
+  g.fillStyle = C.mute; g.textAlign = "center"; g.textBaseline = "top";
+  for (var s = 0; s <= win; s += 3) g.fillText(fmtTime(Math.max(0, tStart + s)), ml + pw * (s / win), h - mb + 5);
+  var series = [
+    [sag, "knee", C.knee], [sag, "hip", C.hip], [sag, "ankle", C.ankle], [sag, "trunk", C.trunk],
+    [fro, "fppaL", C.L], [fro, "fppaR", C.R]
+  ];
+  series.forEach(function (sr) {
+    var slot = sr[0]; if (!slot) return;
+    var L = slot.live;
+    g.strokeStyle = sr[2]; g.lineWidth = 2; g.lineJoin = "round"; g.beginPath();
+    var pen = false;
+    for (var i = 0; i < L.length; i++) {
+      var p = L[i];
+      if (p.t < tStart - 0.5) continue;
+      var val = p[sr[1]];
+      if (!fin(val)) { pen = false; continue; }
+      var x = X(p.t), y = Y(clamp(val, y0, y1));
+      if (!pen) { g.moveTo(x, y); pen = true; } else g.lineTo(x, y);
+    }
+    g.stroke();
+  });
+}
+
+/* ---------- 실시간 패널, 표 ---------- */
+var TILES = [
+  ["sag_knee", "무릎 굴곡 (측면)", "°", "side", "knee", 0], ["sag_hip", "고관절 굴곡 (측면)", "°", "side", "hip", 0],
+  ["sag_ankle", "발목 배측굴곡 (측면)", "°", "side", "ankle", 0], ["sag_trunk", "몸통 기울기 (측면)", "°", "side", "trunk", 0],
+  ["sag_shank", "정강이 기울기 (측면)", "°", "side", "shank", 0], ["sag_thigh", "대퇴 수평각 (측면)", "°", "side", "thigh", 0],
+  ["front_fL", "정면 FPPA 왼쪽", "°", "front", "fppaL", 0], ["front_fR", "정면 FPPA 오른쪽", "°", "front", "fppaR", 0],
+  ["front_ratio", "정면 무릎/발목 폭비", "", "front", "ratio", 2],
+  ["rear_fL", "후면 FPPA 왼쪽", "°", "rear", "fppaL", 0], ["rear_fR", "후면 FPPA 오른쪽", "°", "rear", "fppaR", 0]
+];
+function buildTiles() {
+  var box = $("tiles"); box.innerHTML = "";
+  TILES.forEach(function (t) {
+    var d = document.createElement("div");
+    d.className = "tile"; d.id = "tile_" + t[0]; d.hidden = true;
+    d.innerHTML = '<div class="tl">' + t[1] + '</div><div class="tv"><span id="v_' + t[0] + '">–</span><small>' + t[2] + '</small></div>';
+    box.appendChild(d);
+  });
+}
+function updateTileVisibility() {
+  TILES.forEach(function (t) {
+    var el = $("tile_" + t[0]); if (el) el.hidden = !(slots[t[3]] && slots[t[3]].stream);
+  });
+}
+function updateLive(now) {
+  TILES.forEach(function (t) {
+    var el = $("v_" + t[0]); if (!el) return;
+    var a = freshAng(slots[t[3]], now);
+    el.textContent = a ? f1(a[t[4]], t[5]) : "–";
+  });
+  var drv = driverSlot(now);
+  var st = S.recording ? (S.rep.state === "active" ? "반복 진행 중" : "대기") : "측정 안 함";
+  $("repState").textContent = (drv ? LABEL[drv.key] + " 기준, " : "") + st;
+}
+
+var METRICS = [
+  ["peakKnee", "무릎 굴곡 최대 (°)", 1], ["hip", "고관절 굴곡 (°)", 1], ["ankle", "발목 배측굴곡 (°)", 1],
+  ["trunk", "몸통 기울기 (°)", 1], ["shank", "정강이 기울기 (°)", 1], ["thigh", "대퇴 수평각 (°)", 1],
+  ["tDown", "하강 시간 (s)", 2], ["tUp", "상승 시간 (s)", 2],
+  ["fppaFront", "정면 최대 FPPA (°)", 1], ["ratioFront", "정면 폭비", 2], ["fppaRear", "후면 최대 FPPA (°)", 1]
+];
+function renderReps() {
+  $("repsT").tHead.innerHTML = "<tr><th>#</th><th class='l'>종류</th>" +
+    METRICS.map(function (m) { return "<th>" + m[1] + "</th>"; }).join("") + "</tr>";
+  var rows = S.reps.slice().reverse().slice(0, 40).map(function (r) {
+    return "<tr><td>" + r.n + "</td><td class='l'>" + MODES[r.mode] + "</td>" +
+      METRICS.map(function (m) { return "<td>" + f1(r[m[0]], m[2]) + "</td>"; }).join("") + "</tr>";
+  });
+  $("repsBody").innerHTML = rows.length ? rows.join("") :
+    "<tr><td colspan='" + (METRICS.length + 2) + "' class='l muted'>아직 기록이 없습니다. 측정을 시작한 뒤 스쿼트를 반복하세요.</td></tr>";
+  $("repCount").textContent = S.reps.length ? "(총 " + S.reps.length + "회)" : "";
+  renderCmp();
+}
+function stat(vals) {
+  var v = vals.filter(fin);
+  if (!v.length) return null;
+  var m = v.reduce(function (s, x) { return s + x; }, 0) / v.length;
+  var sd = v.length > 1 ? Math.sqrt(v.reduce(function (s, x) { return s + (x - m) * (x - m); }, 0) / (v.length - 1)) : 0;
+  return { m: m, sd: sd, n: v.length };
+}
+function renderCmp() {
+  var keys = Object.keys(MODES);
+  $("cmpT").tHead.innerHTML = "<tr><th>항목</th>" + keys.map(function (k) { return "<th>" + MODES[k] + "</th>"; }).join("") + "</tr>";
+  var cnt = "<tr><td>반복 수</td>" + keys.map(function (k) {
+    return "<td>" + S.reps.filter(function (r) { return r.mode === k; }).length + "</td>";
+  }).join("") + "</tr>";
+  var body = METRICS.map(function (m) {
+    return "<tr><td>" + m[1] + "</td>" + keys.map(function (k) {
+      var st = stat(S.reps.filter(function (r) { return r.mode === k; }).map(function (r) { return r[m[0]]; }));
+      return "<td>" + (st ? f1(st.m, m[2]) + " ± " + f1(st.sd, m[2]) + " <span class='muted'>(" + st.n + ")</span>" : "–") + "</td>";
+    }).join("") + "</tr>";
+  }).join("");
+  $("cmpBody").innerHTML = cnt + body;
+}
+
+/* ---------- 내보내기 ---------- */
+function download(name, text) {
+  var b = new Blob(["﻿" + text], { type: "text/csv;charset=utf-8" });
+  var u = URL.createObjectURL(b), a = document.createElement("a");
+  a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function () { URL.revokeObjectURL(u); }, 1500);
+}
+function cell(v) { return typeof v === "number" ? (fin(v) ? String(Math.round(v * 1000) / 1000) : "") : String(v === undefined ? "" : v); }
+function csv(cols, rows) {
+  return cols.join(",") + "\n" + rows.map(function (r) { return cols.map(function (c) { return cell(r[c]); }).join(","); }).join("\n");
+}
+function exportFrames() {
+  if (!S.frames.length) { setStatus("내보낼 시계열 기록이 없습니다. 측정을 먼저 진행하세요.", "warn"); return; }
+  download("squat_multicam_timeseries.csv", csv(["t", "slot", "mode", "knee", "hip", "ankle", "trunk", "shank", "thigh", "fppaL", "fppaR", "ratio"], S.frames));
+}
+function exportReps() {
+  if (!S.reps.length) { setStatus("내보낼 반복 기록이 없습니다.", "warn"); return; }
+  download("squat_multicam_reps.csv", csv(["mode", "n", "t", "peakKnee", "hip", "ankle", "trunk", "shank", "thigh", "tDown", "tUp", "fppaFront", "ratioFront", "fppaRear"], S.reps));
+}
+
+/* ---------- 이벤트 ---------- */
+function bind() {
+  $("slots").addEventListener("click", function (e) {
+    var b = e.target.closest ? e.target.closest("button[data-act]") : null;
+    if (!b) return;
+    var slot = slots[b.getAttribute("data-slot")], act = b.getAttribute("data-act");
+    if (!slot) return;
+    if (act === "copy") copyLink(slot.key);
+    else if (act === "local") useLocal(slot);
+    else if (act === "drop") detach(slot);
+  });
+  $("baseUrl").addEventListener("input", renderQR);
+  $("btnRec").addEventListener("click", toggleRec);
+  $("btnCal").addEventListener("click", startCalib);
+  $("btnCsvT").addEventListener("click", exportFrames);
+  $("btnCsvR").addEventListener("click", exportReps);
+  $("btnClrMode").addEventListener("click", function () {
+    S.reps = S.reps.filter(function (r) { return r.mode !== S.mode; });
+    S.frames = S.frames.filter(function (f) { return f.mode !== S.mode; });
+    renderReps(); setStatus(MODES[S.mode] + " 기록을 삭제했습니다.", "");
+  });
+  $("btnClrAll").addEventListener("click", function () {
+    S.reps = []; S.frames = []; renderReps(); setStatus("모든 기록을 삭제했습니다.", "");
+  });
+  document.querySelectorAll("input[name=mode]").forEach(function (el) {
+    el.addEventListener("change", function () {
+      if (el.checked) { S.mode = el.value; S.rep = newRep(); if (S.recording) setStatus("측정 중: " + MODES[S.mode], "ok"); }
+    });
+  });
+  $("selSide").addEventListener("change", function (e) { S.sideSel = e.target.value; });
+  $("selCalc").addEventListener("change", function (e) {
+    S.calc = e.target.value; S.rep = newRep(); resetOffsets();
+    setStatus("각도 계산 방식을 바꿨습니다. 정자세 보정을 다시 하세요.", "warn");
+  });
+  $("selModel").addEventListener("change", function (e) {
+    S.model = e.target.value;
+    connectedSlots().forEach(function (s) { ensureLandmarker(s); });
+  });
+  $("smooth").addEventListener("input", function (e) { S.smooth = +e.target.value; $("smoothV").textContent = S.smooth.toFixed(2); });
+
+  var c3 = $("c3"), drag = null;
+  c3.addEventListener("pointerdown", function (e) { drag = { x: e.clientX, y: e.clientY }; try { c3.setPointerCapture(e.pointerId); } catch (x) {} c3.style.cursor = "grabbing"; });
+  c3.addEventListener("pointermove", function (e) {
+    if (!drag) return;
+    S.yaw += (e.clientX - drag.x) * 0.01;
+    S.pitch = clamp(S.pitch + (e.clientY - drag.y) * 0.01, -1.2, 1.2);
+    drag = { x: e.clientX, y: e.clientY }; draw3D();
+  });
+  var end = function () { drag = null; c3.style.cursor = "grab"; };
+  c3.addEventListener("pointerup", end); c3.addEventListener("pointercancel", end);
+  $("v3f").addEventListener("click", function () { S.yaw = 0; S.pitch = 0.12; draw3D(); });
+  $("v3s").addEventListener("click", function () { S.yaw = Math.PI / 2; S.pitch = 0.12; draw3D(); });
+  $("v3o").addEventListener("click", function () { S.yaw = 0.7; S.pitch = 0.25; draw3D(); });
+
+  window.addEventListener("resize", drawChart);
+  window.addEventListener("pagehide", function () { if (S.peer) { try { S.peer.destroy(); } catch (e) {} } });
+  if (window.matchMedia) {
+    var mq = window.matchMedia("(prefers-color-scheme: dark)");
+    var onTheme = function () { refreshColors(); draw3D(); drawChart(); };
+    if (mq.addEventListener) mq.addEventListener("change", onTheme);
+  }
+}
+
+/* ---------- 시작 ---------- */
+S.rep = newRep();
+SLOT_DEFS.forEach(function (d) { slots[d.key] = makeSlot(d); });
+refreshColors();
+buildUI();
+buildTiles();
+renderReps();
+bind();
+syncButtons();
+var saved = "";
+try { saved = localStorage.getItem("sqlab_base") || ""; } catch (e) {}
+$("baseUrl").value = /^https?:\/\//i.test(location.protocol + "//") && location.protocol !== "file:"
+  ? location.href.split("#")[0].split("?")[0] : saved;
+SLOT_DEFS.forEach(function (d) { updateCard(slots[d.key]); });
+renderQR();
+draw3D();
+drawChart();
+S.raf = requestAnimationFrame(loop);
+setHost("연결 서버에 접속하는 중", "busy");
+startPeer();
+
+} /* runHost 끝 */
+
+if (hostId) runPhone(); else runHost();
+})();
+</script>
+</body>
+</html>
